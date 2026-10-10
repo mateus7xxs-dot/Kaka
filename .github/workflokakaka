@@ -1,0 +1,46 @@
+name: Windows Virtual PC (Tailscale)
+
+on: 
+  workflow_dispatch: # Permite ativar a máquina virtual manualmente
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360 # Tempo máximo de duração da sessão (6 horas)
+
+    steps:
+    - name: Baixar e Instalar Tailscale
+      run: |
+        Invoke-WebRequest -Uri https://tailscale.com -OutFile tailscale-setup.exe
+        Start-Process -FilePath .\tailscale-setup.exe -ArgumentList '/quiet' -Wait
+
+    - name: Conectar ao Tailscale
+      env:
+        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+      run: |
+        & "C:\Program Files\Tailscale IPN\tailscale.exe" up --authkey=$env:TAILSCALE_AUTH_KEY --accept-routes
+
+    - name: Configurar e Ativar Área de Trabalho Remota (RDP)
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+
+    - name: Exibir Informações de Login da Máquina Virtual
+      run: |
+        $ip = (& "C:\Program Files\Tailscale IPN\tailscale.exe" ip -4)
+        echo "============================================="
+        echo "PC VIRTUAL ATIVADO COM SUCESSO!"
+        echo "IP do Tailscale para Conexão: $ip"
+        echo "Usuário: runneradmin"
+        echo "A senha é a padrão gerada dinamicamente pelo GitHub Actions"
+        echo "============================================="
+
+    - name: Manter a VM ativa
+      run: |
+        # Loop para impedir que o workflow feche antes do limite de tempo
+        $timeout = New-TimeSpan -Minutes 350
+        $sw = [diagnostics.stopwatch]::StartNew()
+        while ($sw.elapsed -lt $timeout) {
+            Start-Sleep -Seconds 60
+        }
